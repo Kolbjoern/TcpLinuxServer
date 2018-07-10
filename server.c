@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-#include <limits.h>
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -12,12 +11,30 @@
 
 #define PORTNUM 9002
 #define MAX_BUFFER_LEN 500
-//#define CLIENT_CHUNK 10
+#define CLIENT_CHUNK 10
 
-//int *clientList;
-//int clientRoof;
-int clientCeil;
-int clientFloor;
+int *clientList;
+int clientRoof;
+int clientCounter;
+
+void removeElement(int *array, int index, int arrayLength)
+{
+	for (int i = index; i < arrayLength-1; i++)
+	{
+		array[i] = array[i + 1];
+	}
+}
+
+int getClientIndex(int *array, int client, int arrayLength)
+{
+	for (int i = 0; i < arrayLength; i++)
+	{
+		if (client == array[i]){
+			return i;
+		}
+	}
+	return -1;
+}
 
 void *listenForMessages(void *args)
 {
@@ -34,10 +51,10 @@ void *listenForMessages(void *args)
 			buffer[messageSize] = '\0';
 			printf("Message(%d):: %s (%d bytes).\n", clientSock, buffer, messageSize);
 			
-			printf("Broadcast from %d to %d\n", clientFloor, clientCeil);
-			for (int i = clientFloor; i < clientCeil+1; i++)
+			printf("Broadcast from to entire client list (%d)\n", clientCounter);
+			for (int i = 0; i < clientCounter; i++)
 			{
-				write(i, buffer, messageSize);
+				write(clientList[i], buffer, messageSize);
 			}
 			
 			memset(buffer, '\0', sizeof(buffer));//emtpy buffer
@@ -45,11 +62,17 @@ void *listenForMessages(void *args)
 		else if (messageSize == 0)
 		{
 			printf("Client %d disconnected\n", clientSock);
+			
+			int clientIndex = getClientIndex(clientList, clientSock, clientCounter);
+			if (clientIndex == -1)
+			{
+				printf("Could not remove client %d\n", clientSock);
+				break;
+			}
+			removeElement(clientList, clientIndex, clientCounter);
+			clientCounter--;
+
 			break;
-		}
-		else if (messageSize == -1)
-		{
-			printf("Receive failed\n");
 		}
 	}
 
@@ -72,12 +95,9 @@ int main(int argc, char * argv[])
 {
 	printf("Server init\n");
 
-//	clientList = malloc(CLIENT_CHUNK * sizeof(int));
-//	clientRoof = CLIENT_CHUNK;
-//	clientCounter = 0;
-
-	clientCeil = 0;
-	clientFloor = INT_MAX;
+	clientList = malloc(CLIENT_CHUNK * sizeof(int));
+	clientRoof = CLIENT_CHUNK;
+	clientCounter = 0;
 
 	struct sockaddr_in serverInfo = getServerAddressInfo();
 
@@ -105,20 +125,15 @@ int main(int argc, char * argv[])
 		currentClientSock = accept(serverSock, (struct sockaddr*) &clientInfo, &sockSize);
 		printf("Established connection with %s\n", inet_ntoa(clientInfo.sin_addr));
 	
-//		clientList[clientCounter++] = currentClientSock;
-//		if (clientCounter >= clientRoof-1)
-//		{
-//			clientRoof += CLIENT_CHUNK;
-//			clientList = realloc(clientList, clientRoof);
-//			printf("Reallocated clientlist, roof is now at %d\n", clientRoof);
-//		}
-//		printf("Added %d to clientList\n", currentClientSock);
-
-		if (currentClientSock > clientCeil)
-			clientCeil = currentClientSock;
-
-		if (currentClientSock < clientFloor)
-			clientFloor = currentClientSock;
+		clientList[clientCounter++] = currentClientSock;
+		if (clientCounter >= clientRoof-1)//remove -1?
+		{
+			clientRoof += CLIENT_CHUNK;
+			clientList = realloc(clientList, clientRoof);
+			printf("Reallocated clientlist, roof is now at %d\n", clientRoof);
+		}
+		printf("Added %d to clientList\n", currentClientSock);
+		//TODO: also resize down?
 
 		pthread_t listenerThread;
 		newClientSock = malloc(1);
@@ -129,7 +144,7 @@ int main(int argc, char * argv[])
 	//TODO:join threads?
 
 	close(serverSock);
-//	free(clientList);
+	free(clientList);
 
 	return 0;
 }
