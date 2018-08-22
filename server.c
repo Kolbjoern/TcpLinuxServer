@@ -9,32 +9,10 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#include "client_handler.h"
+
 #define PORTNUM 9002
-#define MAX_BUFFER_LEN 500
 #define CLIENT_CHUNK 10
-
-void remove_element(int *array, int index, int array_length)
-{
- 	for (int i = index; i < array_length-1; i++) {
-   		array[i] = array[i + 1];
-	}
-}
-
-int get_client_index(int *array, int client, int array_length)
-{
-	for (int i = 0; i < array_length; i++) {
-		if (client == array[i]){
-			return i;
-		}
-	}
- 	return -1;
-}
-
-struct listener_struct {
-	int *socket;
-	int *client_list;
-	int *num_clients;
-};
 
 char* concat(char *s1, char *s2)
 {
@@ -42,51 +20,6 @@ char* concat(char *s1, char *s2)
 	strcpy(result, s1);
 	strcat(result, s2);
 	return result;
-}
-
-void *listen_for_messages(void *args)
-{
-	struct listener_struct *listener_info = (struct listener_struct*)args;
-
-	int client_sock = *listener_info->socket;
-	int message_size;
-	int buffer[MAX_BUFFER_LEN + 1]; // +1 for null terminator
-
-	while (1) {
-		message_size = recv(client_sock, buffer, MAX_BUFFER_LEN, 0);
-		if (message_size > 0) {
-			//TODO: add sleep to test buffer message stack
-			buffer[message_size] = '\0';
-//			printf("Message(%d):: %s (%d bytes).\n", client_sock, buffer, message_size);
-
-			printf("Broadcast to entire client list (%d)\n", *listener_info->num_clients);
-			for (int i = 0; i < *listener_info->num_clients; i++) {
-				write(listener_info->client_list[i], buffer, message_size);
-			}
-
-			memset(buffer, '\0', sizeof(buffer));//emtpy buffer
-		}
-		else if (message_size == 0) {
-			printf("Client %d disconnected\n", client_sock);
-
-			int client_index = get_client_index(listener_info->client_list, client_sock, *listener_info->num_clients);
-			printf("Remove at index: %d\n", client_index);
-			if (client_index == -1) {
-				printf("Could not remove client %d\n", client_sock);
-				break;
-			}
-			remove_element(listener_info->client_list, client_index, *listener_info->num_clients);
-			(*listener_info->num_clients)--;
-
-			break;
-		}
-	}
-
-	close(client_sock);
-//	free(client_sock);
-//	free(listener_info);
-
-	return 0;
 }
 
 struct sockaddr_in get_server_address_info()
@@ -136,7 +69,7 @@ int main(int argc, char * argv[])
 	printf("Hosting on: %s\n", inet_ntoa(server_info.sin_addr));
 
 	int current_client_sock;
-	struct listener_struct new_client;
+	listener_struct new_client;
 	new_client.client_list = client_list;
 	new_client.num_clients = &client_counter;
 
